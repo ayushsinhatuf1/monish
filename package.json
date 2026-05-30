@@ -1,0 +1,23 @@
+{
+  "name": "monish",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Monish - Paid Quiz Competition Platform",
+  "workspaces": [
+    "shared",
+    "backend",
+    "admin-panel",
+    "web"
+  ],
+  "scripts": {
+    "dev": "cd web && npx vite --port 5174",
+    "dev:web": "cd web && npx vite --port 5174",
+    "dev:backend": "cd backend && npx tsx src/server.ts",
+    "dev:admin": "cd admin-panel && npx vite --port 5173",
+    "build": "cd web && npx vite build",
+    "typecheck": "tsc --noEmit -p web/tsconfig.json"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

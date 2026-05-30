@@ -1,0 +1,258 @@
+// Monish Backend – Prisma Schema
+// Full database schema with all 12 models
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================================
+// Users
+// ============================================================
+
+model User {
+  id            String   @id @default(uuid())
+  name          String?
+  phone         String   @unique
+  email         String?
+  avatar        String?
+  walletBalance Decimal  @default(0) @map("wallet_balance") @db.Decimal(12, 2)
+  referralCode  String   @unique @map("referral_code")
+  referredBy    String?  @map("referred_by")
+  totalWinnings Decimal  @default(0) @map("total_winnings") @db.Decimal(12, 2)
+  isActive      Boolean  @default(true) @map("is_active")
+  deviceId      String?  @map("device_id")
+  fcmToken      String?  @map("fcm_token")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  wallet            Wallet?
+  walletTransactions WalletTransaction[]
+  quizParticipants  QuizParticipant[]
+  quizAttempts      QuizAttempt[]
+  winners           Winner[]
+  referralsGiven    Referral[] @relation("ReferralsGiven")
+  referralsReceived Referral[] @relation("ReferralsReceived")
+
+  @@map("users")
+}
+
+// ============================================================
+// Wallet
+// ============================================================
+
+model Wallet {
+  id             String  @id @default(uuid())
+  userId         String  @unique @map("user_id")
+  balance        Decimal @default(0) @db.Decimal(12, 2)
+  totalAdded     Decimal @default(0) @map("total_added") @db.Decimal(12, 2)
+  totalWithdrawn Decimal @default(0) @map("total_withdrawn") @db.Decimal(12, 2)
+  totalSpent     Decimal @default(0) @map("total_spent") @db.Decimal(12, 2)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  type        String   // 'credit' | 'debit'
+  amount      Decimal  @db.Decimal(12, 2)
+  description String
+  referenceId String?  @map("reference_id")
+  status      String   @default("completed") // 'pending' | 'completed' | 'failed'
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("wallet_transactions")
+}
+
+// ============================================================
+// Quiz
+// ============================================================
+
+model Quiz {
+  id                  String   @id @default(uuid())
+  title               String
+  description         String
+  category            String
+  entryFee            Decimal  @map("entry_fee") @db.Decimal(10, 2)
+  minParticipants     Int      @map("min_participants")
+  maxParticipants     Int      @map("max_participants")
+  currentParticipants Int      @default(0) @map("current_participants")
+  prizePoolPercentage Decimal  @map("prize_pool_percentage") @db.Decimal(5, 2)
+  status              String   @default("upcoming") // upcoming | filling | active | completed | cancelled
+  startTime           DateTime @map("start_time")
+  endTime             DateTime? @map("end_time")
+  durationSeconds     Int      @map("duration_seconds")
+  createdBy           String   @map("created_by")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  prizeStructure   PrizeStructure[]
+  questions        Question[]
+  participants     QuizParticipant[]
+  attempts         QuizAttempt[]
+  winners          Winner[]
+
+  @@index([status])
+  @@index([startTime])
+  @@index([category])
+  @@map("quizzes")
+}
+
+model PrizeStructure {
+  id               String  @id @default(uuid())
+  quizId           String  @map("quiz_id")
+  rankLabel        String  @map("rank_label") // bumper | 1st | 2nd | 3rd | consolation
+  prizeType        String  @map("prize_type") // cash | gift | wallet_credit
+  prizeValue       Decimal @map("prize_value") @db.Decimal(10, 2)
+  prizeDescription String  @map("prize_description")
+  winnerCount      Int     @map("winner_count")
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@map("prize_structure")
+}
+
+model Question {
+  id              String @id @default(uuid())
+  quizId          String @map("quiz_id")
+  questionText    String @map("question_text")
+  optionA         String @map("option_a")
+  optionB         String @map("option_b")
+  optionC         String @map("option_c")
+  optionD         String @map("option_d")
+  correctOption   String @map("correct_option") // A | B | C | D
+  timeLimitSeconds Int   @map("time_limit_seconds") @default(15)
+  orderIndex      Int    @map("order_index")
+
+  quiz    Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  answers Answer[]
+
+  @@index([quizId])
+  @@map("questions")
+}
+
+// ============================================================
+// Quiz Participation
+// ============================================================
+
+model QuizParticipant {
+  id            String   @id @default(uuid())
+  quizId        String   @map("quiz_id")
+  userId        String   @map("user_id")
+  paymentStatus String   @default("pending") @map("payment_status") // pending | paid | refunded
+  joinedAt      DateTime @default(now()) @map("joined_at")
+  isRefunded    Boolean  @default(false) @map("is_refunded")
+  paymentId     String?  @map("payment_id") // Razorpay payment ID
+  orderId       String?  @map("order_id") // Razorpay order ID
+
+  quiz Quiz @relation(fields: [quizId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([quizId, userId])
+  @@index([quizId])
+  @@index([userId])
+  @@map("quiz_participants")
+}
+
+model QuizAttempt {
+  id               String    @id @default(uuid())
+  quizId           String    @map("quiz_id")
+  userId           String    @map("user_id")
+  startedAt        DateTime  @default(now()) @map("started_at")
+  completedAt      DateTime? @map("completed_at")
+  totalCorrect     Int       @default(0) @map("total_correct")
+  totalWrong       Int       @default(0) @map("total_wrong")
+  timeTakenSeconds Int       @default(0) @map("time_taken_seconds")
+  isEligible       Boolean   @default(false) @map("is_eligible") // All correct = true
+
+  quiz    Quiz     @relation(fields: [quizId], references: [id])
+  user    User     @relation(fields: [userId], references: [id])
+  answers Answer[]
+
+  @@unique([quizId, userId])
+  @@index([quizId])
+  @@index([userId])
+  @@map("quiz_attempts")
+}
+
+model Answer {
+  id             String   @id @default(uuid())
+  attemptId      String   @map("attempt_id")
+  questionId     String   @map("question_id")
+  selectedOption String   @map("selected_option") // A | B | C | D
+  isCorrect      Boolean  @map("is_correct")
+  answeredAt     DateTime @default(now()) @map("answered_at")
+
+  attempt  QuizAttempt @relation(fields: [attemptId], references: [id])
+  question Question    @relation(fields: [questionId], references: [id])
+
+  @@unique([attemptId, questionId])
+  @@map("answers")
+}
+
+// ============================================================
+// Winners
+// ============================================================
+
+model Winner {
+  id          String   @id @default(uuid())
+  quizId      String   @map("quiz_id")
+  userId      String   @map("user_id")
+  rankLabel   String   @map("rank_label")
+  prizeType   String   @map("prize_type")
+  prizeValue  Decimal  @map("prize_value") @db.Decimal(10, 2)
+  announcedAt DateTime @default(now()) @map("announced_at")
+  isPaid      Boolean  @default(false) @map("is_paid")
+
+  quiz Quiz @relation(fields: [quizId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([quizId])
+  @@index([userId])
+  @@map("winners")
+}
+
+// ============================================================
+// Referrals
+// ============================================================
+
+model Referral {
+  id           String   @id @default(uuid())
+  referrerId   String   @map("referrer_id")
+  referredId   String   @map("referred_id")
+  rewardAmount Decimal  @map("reward_amount") @db.Decimal(10, 2)
+  status       String   @default("pending") // pending | credited
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  referrer User @relation("ReferralsGiven", fields: [referrerId], references: [id])
+  referred User @relation("ReferralsReceived", fields: [referredId], references: [id])
+
+  @@unique([referrerId, referredId])
+  @@map("referrals")
+}
+
+// ============================================================
+// Admin Users
+// ============================================================
+
+model AdminUser {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         String   @default("admin") // super_admin | admin | moderator
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("admin_users")
+}
